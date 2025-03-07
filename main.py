@@ -10,8 +10,8 @@ from utils.driver_utils import init_driver
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
 # Chemins constants
-CHROME_DRIVER_PATH = "C:/Users/ACER/Documents/code/Init_selenium/chromedriver.exe"
-CHROME_BINARY_PATH = "C:/Program Files/Google/Chrome/Application/chrome.exe"
+CHROME_DRIVER_PATH = "/home/percky/Documents/code/alligator-selenium-messenger/chromedriver"
+CHROME_BINARY_PATH = "/usr/bin/google-chrome"
 
 class FacebookMessengerBot:
     def __init__(self, email, password, driver_path, binary_path):
@@ -21,11 +21,19 @@ class FacebookMessengerBot:
         self.last_message_count = {}
 
     def login(self):
-        """Log in to Facebook."""
+        """Connexion à Facebook, accès à la page des messages pour déclencher la 2FA, puis pause pour compléter la 2FA."""
         login_to_facebook(self.driver, self.wait, self.email, self.password)
+        logging.info("Authentification initiale réussie.")
+        
+        # Accéder aux messages pour déclencher l'authentification à double facteur
+        self.driver.get("https://www.facebook.com/messages")
+        logging.info("Accès aux messages pour déclencher l'authentification à double facteur.")
+        
+        # Pause manuelle pour permettre à l'utilisateur de compléter la 2FA (environ 1 à 2 minutes)
+        input("Après avoir complété la 2FA dans le navigateur, appuyez sur Entrée pour continuer...")
 
     def monitor_conversations(self, conversation_ids):
-        """Monitor conversations and respond with reversed messages only from recipients."""
+        """Surveille les conversations et répond en renversant le message uniquement pour les messages reçus."""
         self.last_message_count = {cid: 0 for cid in conversation_ids}
         try:
             while True:
@@ -37,10 +45,11 @@ class FacebookMessengerBot:
                         
                         if last_message["sender"] == "recipient":
                             reversed_msg = reverse_message(last_message["text"])
+                            # Vous pouvez intégrer ici la réponse générée par l'IA si nécessaire :
+                            # replied_msg = get_message_from_ai(last_message["text"])
                             send_message(self.driver, self.wait, cid, reversed_msg)
                         else:
                             logging.info("Le dernier message est du bot, pas d'action nécessaire.")
-
                     else:
                         logging.info("Aucun message trouvé pour %s.", cid)
 
@@ -54,20 +63,20 @@ class FacebookMessengerBot:
             self.driver.quit()
 
 if __name__ == '__main__':
-    # Load credentials
+    # Chargement des identifiants
     EMAIL, PASSWORD = load_env_variables()
 
     # Liste des conversations à surveiller
-    conversation_ids = ["9012249938894046", "103891624739166", "100033562244981"]
+    conversation_ids = ["9022970501162249", "25520837117532030", "10099134706781390"]
 
-    # Initialize and run bot
+    # Initialisation et démarrage du bot
     bot = FacebookMessengerBot(EMAIL, PASSWORD, CHROME_DRIVER_PATH, CHROME_BINARY_PATH)
     bot.login()
 
-    # Send initial "Salut" message
+    # Envoi d'un message initial "Salut" dans chaque conversation
     for cid in conversation_ids:
         send_message(bot.driver, bot.wait, cid, "Salut")
         time.sleep(3)
 
-    # Start monitoring
+    # Démarrage de la surveillance des conversations
     bot.monitor_conversations(conversation_ids)
