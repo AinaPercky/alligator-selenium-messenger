@@ -2,7 +2,7 @@ import time
 import logging
 from utils.request_ai import get_message_from_ai
 from utils.auth_utils import login_to_facebook
-from utils.message_utils import send_message, get_last_message
+from utils.message_utils import send_message, get_last_message, reverse_message
 from utils.env_utils import load_env_variables
 from utils.driver_utils import init_driver
 import os
@@ -11,8 +11,8 @@ import os
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
 # Chemins constants
-CHROME_DRIVER_PATH = "/home/percky/Documents/code/alligator-selenium-messenger/chromedriver"
-CHROME_BINARY_PATH = "/usr/bin/google-chrome"
+CHROME_DRIVER_PATH = "C:/Users/ACER/Documents/code/Init_selenium/chromedriver.exe"
+CHROME_BINARY_PATH = "C:/Program Files/Google/Chrome/Application/chrome.exe"
 
 class FacebookMessengerBot:
     def __init__(self, email, password, driver_path, binary_path):
@@ -69,7 +69,7 @@ if __name__ == '__main__':
     WELCOME_MESSAGE = os.getenv("WELCOME_MESSAGE")
 
     # Liste des conversations à surveiller
-    conversation_ids = ["9022970501162249", "25520837117532030", "10099134706781390"]
+    conversation_ids = ["9012249938894046", "103891624739166", "100033562244981"]
 
     # Initialisation et démarrage du bot
     bot = FacebookMessengerBot(EMAIL, PASSWORD, CHROME_DRIVER_PATH, CHROME_BINARY_PATH)
