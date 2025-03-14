@@ -2,11 +2,13 @@ import time
 import logging
 import os
 import random
+import asyncio
 from utils.request_ai import get_message_from_ai
 from utils.auth_utils import login_to_facebook
 from utils.message_utils import send_message, get_last_message
 from utils.env_utils import load_env_variables
 from utils.driver_utils import init_driver
+from utils.translate import translate_text  # Assurez-vous que la fonction est correctement importée
 from selenium.webdriver.common.action_chains import ActionChains
 from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
@@ -57,7 +59,7 @@ class FacebookMessengerBot:
 
         input("Après avoir complété la 2FA dans le navigateur, appuyez sur Entrée pour continuer...")
 
-    def monitor_conversations(self, conversation_ids):
+    async def monitor_conversations(self, conversation_ids):
         """Surveille les conversations et répond avec l'IA uniquement aux messages reçus."""
         self.last_message_count = {cid: 0 for cid in conversation_ids}
         try:
@@ -67,8 +69,11 @@ class FacebookMessengerBot:
                     if last_message:
                         logging.info("Dernier message dans %s : %s", cid, last_message["text"])
                         if last_message["sender"] == "recipient":
-                            replied_msg = get_message_from_ai(last_message["text"])
-                            send_message(self.driver, self.wait, cid, replied_msg)
+                            last_message_translated = await translate_text(last_message["text"], 'en')
+                            replied_msg = get_message_from_ai(last_message_translated)
+                            if replied_msg:         
+                                replied_msg_translated = await translate_text(replied_msg, 'mg')
+                            send_message(self.driver, self.wait, cid, replied_msg_translated)
                         else:
                             logging.info("Le dernier message est du bot, pas d'action nécessaire.")
                     else:
@@ -85,7 +90,9 @@ class FacebookMessengerBot:
 if __name__ == '__main__':
     EMAIL, PASSWORD = load_env_variables()
     WELCOME_MESSAGE = os.getenv("WELCOME_MESSAGE")
-    conversation_ids = ["9561410110603343", "103891624739166", "9012249938894046"]
+    # conversation_ids = ["9561410110603343", "103891624739166", "9012249938894046"]
+    conversation_ids = ["9561410110603343"]
+
 
     bot = FacebookMessengerBot(EMAIL, PASSWORD, CHROME_DRIVER_PATH, CHROME_BINARY_PATH)
     bot.login()
@@ -94,4 +101,5 @@ if __name__ == '__main__':
         send_message(bot.driver, bot.wait, cid, WELCOME_MESSAGE)
         time.sleep(3)
 
-    bot.monitor_conversations(conversation_ids)
+    # Exécution asynchrone du bot
+    asyncio.run(bot.monitor_conversations(conversation_ids))

@@ -1,6 +1,6 @@
 from googletrans import Translator
 
-def translate_text(text, target_lang, source_lang='auto'):
+async def translate_text(text, target_lang, source_lang='auto'):
     """
     Traduit un texte en fonction de la langue cible.
 
@@ -13,5 +13,5 @@ def translate_text(text, target_lang, source_lang='auto'):
         str: Texte traduit.
     """
     translator = Translator()
-    translation = translator.translate(text, src=source_lang, dest=target_lang)
+    translation = await translator.translate(text, src=source_lang, dest=target_lang)  # Ajoutez 'await' ici
     return translation.text
