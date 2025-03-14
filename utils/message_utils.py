@@ -3,6 +3,7 @@ import logging
 import random
 import json
 import os
+import pyperclip
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
@@ -33,7 +34,19 @@ def send_message(driver, wait, conversation_id, message):
             EC.element_to_be_clickable((By.XPATH, "//div[@role='textbox']"))
         )
         message_box.click()
-        message_box.send_keys(message)
+        pyperclip.copy(message)
+        
+        # Coller le contenu du presse-papiers
+        if driver.name == "chrome":
+            # Pour Chrome sur Windows/Linux
+            message_box.send_keys(Keys.CONTROL, 'v')
+        else:
+            # Pour Safari/Chrome sur Mac
+            message_box.send_keys(Keys.COMMAND, 'v')
+        
+        # Petit délai pour s'assurer que le texte est collé
+        time.sleep(1)
+        # message_box.send_keys(message)
         message_box.send_keys(Keys.RETURN)
         logging.info("Message '%s' envoyé à %s", message, conversation_id)
         time.sleep(random.uniform(1, 3))  # Délai aléatoire pour imiter un humain
