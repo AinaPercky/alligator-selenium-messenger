@@ -11,59 +11,26 @@ from selenium.webdriver.common.keys import Keys
 from dotenv import load_dotenv
 from openai import OpenAI
 
-# Chemin du fichier pour persister l'état
-STATE_FILE = "conversation_state.json"
-
-# Charger l'état depuis le fichier s'il existe, sinon initialiser un dictionnaire vide
-if os.path.exists(STATE_FILE):
-    with open(STATE_FILE, "r") as f:
-        first_run_per_conversation = json.load(f)
-else:
-    first_run_per_conversation = {}
-
-def save_state():
-    """Sauvegarde l'état dans le fichier JSON."""
-    with open(STATE_FILE, "w") as f:
-        json.dump(first_run_per_conversation, f)
-
-def get_message_from_ai(message_param, site_url=None, site_name=None):
-    """Génère une réponse avec OpenAI."""
-    load_dotenv()
-    OPENAI_KEY = os.getenv("OPENAI_KEY")
-    OPENAI_URL = os.getenv("OPENAI_URL")
-    site_url = site_url or os.getenv("SITE_URL", "<DEFAULT_SITE_URL>")
-    site_name = site_name or os.getenv("SITE_NAME", "<DEFAULT_SITE_NAME>")
-    prompt = os.getenv("PROMPT", "")
-    
-    client = OpenAI(
-        base_url=OPENAI_URL,
-        api_key=OPENAI_KEY,
-    )
-    
-    full_prompt = prompt + " " + message_param
-    
-    completion = client.chat.completions.create(
-        extra_headers={
-            "HTTP-Referer": site_url,
-            "X-Title": site_name,
-        },
-        extra_body={},
-        model="cognitivecomputations/dolphin3.0-r1-mistral-24b:free",
-        messages=[{
-            "role": "user",
-            "content": full_prompt
-        }]
-    )
-    
-    ai_response = completion.choices[0].message.content
-    ai_response_cleaned = re.sub(r"<think>.*?</think>", "", ai_response, flags=re.DOTALL)
-    return ai_response_cleaned.strip()
-
-def send_message(driver, wait, conversation_id, message):
-    """Envoie un message à une conversation Messenger."""
+def open_conversation(driver, wait, conversation_id):
+    """Ouvre une conversation et clique sur le bouton 'Continuer' si nécessaire (pour le chiffrement de bout en bout)."""
     conversation_url = f"https://www.facebook.com/messages/t/{conversation_id}"
     driver.get(conversation_url)
     logging.info("Ouverture de la conversation %s", conversation_id)
+    
+    # Vérifier la présence du bouton "Continuer" lié au chiffrement de bout en bout
+    try:
+        continue_button = wait.until(
+            EC.element_to_be_clickable((By.XPATH, "//button[contains(text(), 'Continuer')]"))
+        )
+        continue_button.click()
+        logging.info("Bouton 'Continuer' cliqué pour accéder à la conversation.")
+        time.sleep(random.uniform(1, 2))  # Petit délai après le clic
+    except Exception as e:
+        logging.info("Pas de bouton 'Continuer' détecté, conversation accessible.")
+
+def send_message(driver, wait, conversation_id, message):
+    """Envoie un message à une conversation Messenger."""
+    open_conversation(driver, wait, conversation_id)
     try:
         message_box = wait.until(
             EC.element_to_be_clickable((By.XPATH, "//div[@role='textbox']"))
@@ -78,14 +45,36 @@ def send_message(driver, wait, conversation_id, message):
         return False
     return True
 
-def get_last_message(driver, wait, conversation_id):
-    """Récupère le dernier message visible d'une conversation Messenger."""
-    conversation_url = f"https://www.facebook.com/messages/t/{conversation_id}"
-    driver.get(conversation_url)
-    time.sleep(random.uniform(2, 5))
+def get_last_message(driver, wait, conversation_id, max_wait=30):
+    """
+    Récupère le dernier message visible d'une conversation Messenger en s'assurant que le chargement est terminé.
+    
+    max_wait: temps maximum en secondes pour attendre que la conversation soit entièrement chargée.
+    """
+    open_conversation(driver, wait, conversation_id)
+    # Augmenter le délai initial pour les connexions lentes
+    time.sleep(random.uniform(3, 6))
+    
     try:
+        # Attendre la présence de la grille de messages
         wait.until(EC.presence_of_element_located((By.XPATH, "//div[@role='grid']")))
-        last_message_elem = driver.find_elements(By.XPATH, "//div[@role='grid']//div[@dir='auto']")[-1]
+        
+        last_message_elem = None
+        start_time = time.time()
+        # Boucle de tentative pendant max_wait secondes pour récupérer un message non vide et chargé
+        while time.time() - start_time < max_wait:
+            messages = driver.find_elements(By.XPATH, "//div[@role='grid']//div[@dir='auto']")
+            if messages:
+                last_message_elem = messages[-1]
+                text = last_message_elem.text.strip()
+                # Vérifier que le texte est bien chargé et ne ressemble pas à un indicateur de chargement
+                if text and "loading" not in text.lower() and "chargement" not in text.lower():
+                    break
+            time.sleep(1)
+        else:
+            logging.error("Aucun message valide trouvé après %s secondes pour %s.", max_wait, conversation_id)
+            return None
+        
         text = last_message_elem.text.strip()
         sender = "unknown"
         
@@ -96,33 +85,13 @@ def get_last_message(driver, wait, conversation_id):
             elif "xyk4ms5" in classes:
                 sender = "bot"
         except Exception as e:
-            logging.warning(f"Impossible de déterminer l'expéditeur pour {conversation_id} : {str(e)}")
+            logging.warning("Impossible de déterminer l'expéditeur pour un message dans %s : %s", conversation_id, str(e))
         
         return {"text": text, "sender": sender}
     except Exception as e:
         logging.error("Erreur lors de la récupération du dernier message pour %s : %s", conversation_id, str(e))
         return None
-
-def bot_logic(driver, wait, conversation_id):
-    """Gère la logique du bot."""
-    global first_run_per_conversation
-    last_message = get_last_message(driver, wait, conversation_id)
-    welcome_message = os.getenv("WELCOME_MESSAGE")
-    
-    if first_run_per_conversation.get(conversation_id, True):
-        if last_message and last_message["sender"] == "recipient":
-            logging.info("Un message existe déjà, le bot répond directement.")
-            time.sleep(2)
-            response = get_message_from_ai(last_message["text"])
-            send_message(driver, wait, conversation_id, response)
-        else:
-            send_message(driver, wait, conversation_id, welcome_message)
-        first_run_per_conversation[conversation_id] = False
-        save_state()
-    elif last_message and last_message["sender"] == "recipient":
-        logging.info("Réponse en cours d'élaboration avec AI...")
-        time.sleep(2)
-        response = get_message_from_ai(last_message["text"])
-        send_message(driver, wait, conversation_id, response)
-    else:
-        logging.info("Aucune action requise pour %s.", conversation_id)
+def reverse_message(text):
+    """Inverse un message : inverse les lettres si un seul mot, sinon inverse l'ordre des mots."""
+    words = text.split()
+    return text[::-1] if len(words) == 1 else " ".join(words[::-1])

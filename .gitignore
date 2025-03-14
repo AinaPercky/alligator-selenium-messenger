@@ -3,6 +3,8 @@
 .env
 *.tmp
 chrome.exe
+chromedriver
 message_id.txt
 message_id.json
 **/__pycache__/
+env
